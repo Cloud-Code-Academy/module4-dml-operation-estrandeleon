@@ -105,7 +105,7 @@ public with sharing class DMLOperations {
         }
         Contact updateContact = [SELECT Id, LastName FROM Contact WHERE Id = :contactId];
         // Update the Contact's last name
-        if (updateContact == null){return;} 
+        if (updateContact == null){return;}
             updateContact.LastName = newLastName;
             update updateContact;
     }
@@ -126,7 +126,7 @@ public with sharing class DMLOperations {
             Schema.sObjectType.Opportunity.fields.StageName.isUpdateable()){
             Opportunity updateOpp = [SELECT Id, StageName FROM Opportunity WHERE Id = :oppId];
             //Check if the stage is null or the same as the new stage
-            if (updateOpp.StageName == null || updateOpp.StageName == newStage){return;} 
+            if (updateOpp.StageName == null || updateOpp.StageName == newStage){return;}
                 updateOpp.StageName = newStage;
             // Update the Opportunity in the database
             update updateOpp;
@@ -141,15 +141,15 @@ public with sharing class DMLOperations {
      * @param newName The new name for the account.
      * @param newIndustry The new industry for the account.
      */
-    public static void updateAccountFields(Id accountId, String newName, String newIndustry) {    
+    public static void updateAccountFields(Id accountId, String newName, String newIndustry) {
         // Query the account
         // [SELECT Id FROM Account WHERE Id = :accountId]
         Account updateAccount = [SELECT Id, Name, Industry FROM Account WHERE Id = :accountId];
         // Check if the account is null
         if (updateAccount == null || newName == null){return;}
         // Check if the new name is null or the same as the current name
-        if (!Schema.SObjectType.Account.isUpdateable() || !Schema.sObjectType.Account.fields.Name.isUpdateable()|| 
-            !Schema.sObjectType.Account.fields.Industry.isUpdateable()){return;}    
+        if (!Schema.SObjectType.Account.isUpdateable() || !Schema.sObjectType.Account.fields.Name.isUpdateable()||
+            !Schema.sObjectType.Account.fields.Industry.isUpdateable()){return;}
         updateAccount.Name = newName;
         updateAccount.Industry = newIndustry;
         update updateAccount;
@@ -177,7 +177,9 @@ public with sharing class DMLOperations {
             opp.Amount = 50000;
         }
         // Upsert the opportunities List so that records are either updated or created
+        if(Schema.sObjectType.Opportunity.isUpdateable() && Schema.sObjectType.Opportunity.isCreateable()){
         upsert opportunities;
+        }
     }
 
     /**
@@ -201,7 +203,7 @@ public with sharing class DMLOperations {
         }
         if (uniqueOppNames.isEmpty()) {
         return;
-        }   
+        }
         // Query for the Account
         Account acct;
         List<Account> accounts = [SELECT Id FROM Account WHERE Name = :accountName];
@@ -212,7 +214,7 @@ public with sharing class DMLOperations {
         } else {
             acct = accounts[0];
         }
-         // Query existing Opportunities by name 
+         // Query existing Opportunities by name
         Map<String, Opportunity> existingOppsByName = new Map<String, Opportunity>();
         for (Opportunity opp : [
             SELECT Id, Name, AccountId, StageName, CloseDate
@@ -239,9 +241,12 @@ public with sharing class DMLOperations {
                         CloseDate = Date.today().addDays(30)
                     );
                 }
-                oppsToUpsert.add(opp); 
+                oppsToUpsert.add(opp);
         }
-     upsert oppsToUpsert;
+        if (!Schema.sObjectType.Opportunity.isCreateable() || !Schema.sObjectType.Opportunity.isUpdateable()) {
+            throw new DmlException('Case is not createable');
+        }
+        upsert oppsToUpsert;
     }
     
     /**
@@ -261,12 +266,20 @@ public with sharing class DMLOperations {
             Account acc = new Account(Name = accountName, Description = 'New Account');
             accounts.add(acc);
         }else{
-                    accounts[0].Description = 'Updated Account';         
+                    accounts[0].Description = 'Updated Account';
         }
                 upsert accounts;
                 return accounts[0];
 	}
 
+    /**
+     * Creates or updates Account records in bulk based on the provided Account names.
+     * Existing Accounts are queried by Name and their Description is updated to 'Updated Account'.
+     * New Account records are created for names not found and assigned Description = 'New Account'.
+     *
+     * @param accountNames Set of Account names to process. Null, blank, and whitespace-only values are ignored.
+     * @return Map<String, Account> A map keyed by trimmed Account Name containing the Accounts that were upserted.
+     */
     public static Map<String, Account> upsertAccountsBulk(Set<String> accountNames) {
          Map<String, Account> accountsByName = new Map<String, Account>();
          //Return an empty map if input variable is null or empty.
@@ -309,7 +322,7 @@ public with sharing class DMLOperations {
 	 * @param contactsToUpsert List of Contacts to be upserted and linked to accounts.
 	 */
 	public static void upsertAccountsWithContacts(List<Contact> contactsToUpsert) {
-        if (contactsToUpsert == null || contactsToUpsert.isEmpty()) return;
+        if (contactsToUpsert == null || contactsToUpsert.isEmpty()){return;}
 		// Loop through each Contact
         Set<String> accountNames = new Set<String>();
         for (Contact c : contactsToUpsert) {
@@ -353,7 +366,7 @@ public with sharing class DMLOperations {
         if (leadsToInsert.isEmpty()) { return; }
         if (!Schema.sObjectType.Lead.isCreateable()) {
             throw new DmlException('Lead is not createable');
-        }   
+        }
         insert leadsToInsert;
 
         // Delete the Leads
@@ -379,8 +392,16 @@ public with sharing class DMLOperations {
             casesToInsert.add(c);
         }
         // Insert the cases
+        if (!Schema.sObjectType.Case.isCreateable()) {
+            throw new DmlException('Case is not createable');
+        }
         insert casesToInsert;
+
+        if (!Schema.sObjectType.Case.isDeletable()) {
+            throw new DmlException('Case is not deletable');
+        }
         // Delete the cases
         delete casesToInsert;
+    
     }
 }
